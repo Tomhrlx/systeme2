@@ -122,6 +122,7 @@ input[type=range]::-moz-range-thumb{width:26px;height:26px;border:none;border-ra
 
 /* Navigation */
 nav.tabs{position:absolute;left:max(16px,env(safe-area-inset-left,0px));right:max(16px,env(safe-area-inset-right,0px));bottom:18px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;padding:6px;border-radius:32px;background:rgba(32,18,44,.78);border:1px solid var(--line);border-top-color:rgba(255,241,232,.15);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);box-shadow:0 16px 32px -14px rgba(0,0,0,.6);z-index:5}
+nav.tabs[hidden]{display:none}
 nav.tabs button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:52px;border:none;border-radius:26px;background:transparent;color:var(--dim);font-size:11px}
 nav.tabs button[aria-current=page]{background:rgba(255,198,92,.13);box-shadow:inset 0 0 0 1px rgba(255,198,92,.45),0 0 16px rgba(255,198,92,.28);color:var(--gold);font-weight:600;text-shadow:0 0 10px rgba(255,198,92,.7)}
 nav.tabs button.boss[aria-current=page]{background:rgba(255,79,139,.13);box-shadow:inset 0 0 0 1px rgba(255,79,139,.45),0 0 16px rgba(255,79,139,.28);color:#FF7FA8;text-shadow:0 0 10px rgba(255,79,139,.7)}
@@ -293,8 +294,10 @@ async function loadMonth(k){
 function saveMonth(k){ return Store.set('m-' + k, M[k]); }
 const expOn = d => (M[monthKey(d)] ? M[monthKey(d)].expenses : []).filter(e => e.d === d);
 const spentOn = d => round2(expOn(d).reduce((a, e) => a + e.amount, 0));
-const impOn = d => expOn(d).filter(e => e.intent === 'impulsion');
-const enemyOn = d => round2(expOn(d).filter(e => e.cat === 'enemy').reduce((a, e) => a + e.amount, 0));
+const isHead = e => !(e.part > 0);             /* dépense étalée : seule la 1re part compte comme achat */
+const fullAmt = e => e.total || e.amount;
+const impOn = d => expOn(d).filter(e => e.intent === 'impulsion' && isHead(e));
+const enemyOn = d => round2(expOn(d).filter(e => e.cat === 'enemy' && isHead(e)).reduce((a, e) => a + fullAmt(e), 0));
 
 /* ---------- Moteur budgétaire ---------- */
 function payDayOf(y, m){ const p = S.settings.payday || '1'; const n = dim(y, m); return p === 'last' ? n : Math.min(num(p) || 1, n); }
@@ -341,7 +344,7 @@ function challengeDay(d){
   S.impRedeemed[k] = round2((S.impRedeemed[k] || 0) + r);
   if (C.days >= 7) C.active = false;
 }
-function impTotal(k){ return round2((M[k] ? M[k].expenses : []).filter(e => e.intent === 'impulsion').reduce((a, e) => a + e.amount, 0)); }
+function impTotal(k){ return round2((M[k] ? M[k].expenses : []).filter(e => e.intent === 'impulsion' && isHead(e)).reduce((a, e) => a + fullAmt(e), 0)); }
 function logSaved(d, amt){ S.savedLog.push({ d, a: round2(amt) }); if (S.savedLog.length > 120) S.savedLog = S.savedLog.slice(-120); }
 
 function closeDay(d, choice){
@@ -521,7 +524,7 @@ function vJour(){
 
   const setup = !configured() ? '<div class="card gold pop"><span class="neon" style="--nc:var(--gold)"></span><div class="stack"><span class="kicker" style="color:var(--gold)">Bienvenue</span><span class="h2">Deux minutes pour démarrer</span><span class="p muted">Renseigne ton revenu et tes charges fixes. Système 2 calcule ce que tu peux dépenser chaque jour, et reporte ce que tu ne dépenses pas.</span><button type="button" class="cta" data-go="reglages" style="margin-top:6px">Configurer mon budget<span class="knob">' + I.next.replace('#E07BFF', '#FFC65C') + '</span></button></div></div>' : '';
 
-  const list = exps.length ? exps.map(e => '<div class="exp"><span class="ini" style="background:' + intentColor[e.intent] + '22;color:' + intentColor[e.intent] + '">' + esc((e.label || '?').charAt(0).toUpperCase()) + '</span><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(e.label) + '</div><div class="small dim">' + new Date(e.ts).getHours() + ':' + pad(new Date(e.ts).getMinutes()) + ' · ' + e.intent + '</div></div><span class="num" style="font-size:18px">' + money(e.amount) + '</span><button type="button" class="x-btn" data-del="' + e.id + '" aria-label="Supprimer ' + esc(e.label) + '">' + I.x + '</button></div>').join('')
+  const list = exps.length ? exps.map(e => '<div class="exp"><span class="ini" style="background:' + intentColor[e.intent] + '22;color:' + intentColor[e.intent] + '">' + esc((e.label || '?').charAt(0).toUpperCase()) + '</span><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(e.label) + '</div><div class="small dim">' + new Date(e.ts).getHours() + ':' + pad(new Date(e.ts).getMinutes()) + ' · ' + e.intent + (e.g ? ' · étalé ' + (e.part + 1) + '/' + e.parts : '') + '</div></div><span class="num" style="font-size:18px">' + money(e.amount) + '</span><button type="button" class="x-btn" data-del="' + e.id + '" aria-label="Supprimer ' + esc(e.label) + '">' + I.x + '</button></div>').join('')
     : '<div class="empty">Aucune dépense aujourd\'hui. Appuie sur « Ajouter une dépense » dès que tu paies quelque chose.</div>';
 
   return '<div class="page">' +
@@ -580,7 +583,7 @@ function vMois(){
     cells += '<div style="width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;box-sizing:border-box;' + st + '">' + k + '</div>';
   }
   const goal = num(S.settings.goalAmount), pct = goal > 0 ? Math.min(100, S.cagnotte / goal * 100) : 0;
-  const k = monthKey(t), spentM = round2((M[k] ? M[k].expenses : []).reduce((a, e) => a + e.amount, 0));
+  const k = monthKey(t), spentM = round2((M[k] ? M[k].expenses : []).filter(e => e.d <= t).reduce((a, e) => a + e.amount, 0));
   const badges = [
     { on: S.bestStreak >= 7, label: 'Série 7 jours', c: '#FFC65C', svg: '<path d="M12 2c1 4 5 6 5 11a5 5 0 0 1-10 0c0-2 1-3 2-4 0 2 1 3 2 3 0-3-1-6 1-10z"/>' },
     { on: S.challenge && S.challenge.days >= 7, label: '7 jours sans impulsion', c: '#E07BFF', svg: '<path d="M6 12l4 4 8-9"/>' },
@@ -626,12 +629,15 @@ function vSaisie(){
   const intents = [['besoin','Besoin','Indispensable : courses, transport, santé.'],['envie','Envie','Un plaisir choisi. Rien de mal, tant que c\'est prévu.'],['impulsion','Impulsion','Acheté sans y penser. Il ira dans le pot des impulsions.']];
   const cur = intents.find(i => i[0] === st.intent);
   const amt = num(st.amount), canSave = amt > 0 && !!st.intent;
+  const n = st.spread || 1, spreads = [[1,'Non'],[3,'3 jours'],[7,'1 semaine'],[30,'1 mois']], end = addDays(today(), n - 1);
+  const spreadHint = n === 1 ? 'Comptée en entier aujourd\'hui.' : !(amt > 0) ? 'Saisis un montant.' : money(amt / n) + ' par jour pendant ' + n + ' jours, jusqu\'au ' + fmtDay(end) + (end > period(today()).end ? ' : ça déborde sur ta prochaine paie' : '');
   return '<div class="page sub" style="gap:16px">' +
     '<div class="row" style="align-items:flex-end"><div class="stack" style="gap:2px"><span class="kicker">' + esc(fmtDay(today())) + '</span><span class="h1">Nouvelle dépense</span></div><button type="button" class="icon-btn" data-go="jour" aria-label="Fermer">' + I.close + '</button></div>' +
     '<div class="row" style="justify-content:flex-start;align-items:baseline;gap:8px;min-height:72px"><span class="hero-num" style="font-size:62px" aria-live="polite">' + esc(st.amount || '0') + '</span><span class="num" style="font-size:34px;color:var(--peach)">€</span></div>' +
     '<div class="stack"><span class="kicker" style="color:var(--muted)">Sois honnête, c\'était plutôt…</span><div class="seg" style="grid-template-columns:repeat(3,minmax(0,1fr))">' + intents.map(i => '<button type="button" data-intent="' + i[0] + '" aria-pressed="' + (st.intent === i[0]) + '" style="--sc:' + intentColor[i[0]] + ';min-height:50px;border-radius:25px;font-size:14px">' + i[1] + '</button>').join('') + '</div><span class="small dim" style="min-height:16px">' + (cur ? cur[2] : 'Choisis une intention pour valider.') + '</span></div>' +
     '<div class="wrap">' + cats.map(c => '<button type="button" class="pill" data-cat="' + c[0] + '" aria-pressed="' + (st.cat === c[0]) + '" style="--sc:#FFC65C;min-height:42px;padding:0 14px">' + c[1] + '</button>').join('') + (enemy ? '<button type="button" class="pill" data-cat="enemy" aria-pressed="' + (st.cat === 'enemy') + '" style="--sc:#FF4F8B;min-height:42px;padding:0 14px;border-color:rgba(255,79,139,.4)">' + esc(enemy) + '</button>' : '') + '</div>' +
     '<label class="field" style="padding:8px 16px;border-radius:18px"><span class="small dim">Note (facultatif)</span><input id="note" class="txt" style="height:34px;font-size:15px" type="text" maxlength="40" placeholder="Ex. : kebab avec Lola" value="' + esc(st.note) + '"></label>' +
+    '<div class="stack" style="gap:8px"><span class="kicker" style="color:var(--muted)">Étaler la dépense</span><div class="seg" style="grid-template-columns:repeat(4,minmax(0,1fr))">' + spreads.map(o => '<button type="button" data-spread="' + o[0] + '" aria-pressed="' + (n === o[0]) + '" style="--sc:#FFC65C;padding:0 4px">' + o[1] + '</button>').join('') + '</div><span class="small dim" style="min-height:16px">' + spreadHint + '</span></div>' +
     '<div class="keys">' + ['1','2','3','4','5','6','7','8','9',',','0','del'].map(k => '<button type="button" data-key="' + k + '" aria-label="' + (k === 'del' ? 'Effacer' : k) + '">' + (k === 'del' ? '⌫' : k) + '</button>').join('') + '</div>' +
     '<button type="button" class="cta" data-act="save" ' + (canSave ? '' : 'disabled') + ' style="justify-content:center;padding:0 24px">Valider le montant</button>' +
     '</div>';
@@ -659,8 +665,8 @@ function vRecap(){
   const under = past.filter(d => S.dayLog[d].s <= S.dayLog[d].a + 0.004).length;
   const saved = round2(S.savedLog.filter(x => x.d >= days[0] && x.d <= days[6]).reduce((a, x) => a + x.a, 0));
   const imps = days.filter(d => d <= t).flatMap(d => impOn(d));
-  const impSum = round2(imps.reduce((a, e) => a + e.amount, 0));
-  const big = imps.slice().sort((a, b) => b.amount - a.amount)[0];
+  const impSum = round2(imps.reduce((a, e) => a + fullAmt(e), 0));
+  const big = imps.slice().sort((a, b) => fullAmt(b) - fullAmt(a))[0];
   const good = past.length === 0 || under >= past.length / 2;
   const goalSet = S.weekGoal && S.weekGoal.week === addDays(days[0], 7);
   return '<div class="page sub" style="position:relative">' +
@@ -773,7 +779,7 @@ function afterJour(tv){
   if (S.celebrate) { const n = S.celebrate; S.celebrate = 0; saveState(); setTimeout(() => { particles($('#streakWrap')); toast('Record battu : ' + n + ' jours d\'affilée sous ton budget.'); buzz([20, 40, 20]); }, 400); }
 }
 function go(v){
-  if (v === 'saisie') ui.saisie = { amount:'', intent:null, cat:'Repas', note:'' };
+  if (v === 'saisie') ui.saisie = { amount:'', intent:null, cat:'Repas', note:'', spread:1 };
   if (v !== 'reglages') ui.confirmReset = false;
   view = v; render(); $('#scroll').scrollTop = 0;
 }
@@ -781,28 +787,41 @@ function go(v){
 /* ---------- Actions ---------- */
 async function addExpense(){
   const st = ui.saisie, amt = round2(num(st.amount)); if (!(amt > 0) || !st.intent) return;
-  const t = today(), k = monthKey(t); await loadMonth(k);
-  const label = st.note.trim() || (st.cat === 'enemy' ? (S.settings.enemy || 'Ennemi') : st.cat);
-  const e = { id: uid(), ts: Date.now(), d: t, amount: amt, label, cat: st.cat, intent: st.intent };
-  M[k].expenses.push(e);
-  if (S.lastClosed >= t) { S.carry = round2(S.carry - amt); saveState(); }
-  saveMonth(k);
+  const t = today(), label = st.note.trim() || (st.cat === 'enemy' ? (S.settings.enemy || 'Ennemi') : st.cat);
+  /* Étalement : une part par jour à partir d'aujourd'hui, l'arrondi va sur la 1re */
+  const n = st.spread || 1, g = n > 1 ? uid() : null, ts = Date.now();
+  const per = Math.floor(amt * 100 / n) / 100, first = round2(amt - per * (n - 1)), touched = new Set();
+  for (let i = 0; i < n; i++) {
+    const d = addDays(t, i), km = monthKey(d); await loadMonth(km); touched.add(km);
+    const e = { id: uid(), ts, d, amount: i ? per : first, label, cat: st.cat, intent: st.intent };
+    if (g) Object.assign(e, { g, part: i, parts: n, total: amt });
+    M[km].expenses.push(e);
+  }
+  if (S.lastClosed >= t) { S.carry = round2(S.carry - first); saveState(); }
+  touched.forEach(saveMonth);
   if (st.intent === 'impulsion') {
     buzz([80, 40, 80, 40, 160]);
     ui.sheet = { added: amt };
     $('#overlay').innerHTML = jarSheet(amt);
     setTimeout(() => { const k2 = monthKey(today()), pot = Math.max(0, impTotal(k2) - (S.impRedeemed[k2] || 0)); const l = $('#jarLiquid'); if (l) l.style.height = Math.min(100, pot) + '%'; const n = $('#jarNum'); if (n) { const f = pot - amt, t0 = performance.now(); const s = now => { const p = Math.min(1, (now - t0) / 1100), v = f + (pot - f) * (1 - Math.pow(1 - p, 3)); n.textContent = money(v); if (p < 1) requestAnimationFrame(s); }; requestAnimationFrame(s); } }, 450);
   } else {
-    buzz([30, 50, 30]); rain(); toast('Dépense ajoutée : ' + money(amt));
+    buzz([30, 50, 30]); rain(); toast(n > 1 ? 'Étalée sur ' + n + ' jours : ' + money(amt / n) + ' par jour' : 'Dépense ajoutée : ' + money(amt));
     setTimeout(() => { if (view === 'saisie') go('jour'); }, 1400);
   }
 }
 async function delExpense(id){
   const t = today(), k = monthKey(t); await loadMonth(k);
   const e = M[k].expenses.find(x => x.id === id); if (!e) return;
-  M[k].expenses = M[k].expenses.filter(x => x.id !== id);
-  if (e.d <= S.lastClosed) { S.carry = round2(S.carry + e.amount); saveState(); }
-  saveMonth(k); render(); toast('Dépense supprimée');
+  const keys = new Set([k]);
+  if (e.g) { const s0 = addDays(e.d, -e.part); for (let i = 0; i < e.parts; i++) keys.add(monthKey(addDays(s0, i))); }
+  let back = 0;
+  for (const km of keys) {
+    await loadMonth(km);
+    M[km].expenses = M[km].expenses.filter(x => { const hit = e.g ? x.g === e.g : x.id === id; if (hit && x.d <= S.lastClosed) back += x.amount; return !hit; });
+    saveMonth(km);
+  }
+  if (back) { S.carry = round2(S.carry + back); saveState(); }
+  render(); toast(e.g ? 'Dépense étalée supprimée en entier' : 'Dépense supprimée');
 }
 function closeToday(c){
   const t = today();
@@ -815,8 +834,8 @@ async function exportCsv(){
   const keys = new Set(); Object.keys(M).forEach(k => keys.add(k));
   let d = S.startDate; let guard = 0; while (d <= today() && guard < 40) { keys.add(monthKey(d)); const p = parse(d); d = ymd(new Date(p.getFullYear(), p.getMonth() + 1, 1, 12)); guard++; }
   for (const k of keys) await loadMonth(k);
-  const rows = [['date','heure','montant','libellé','catégorie','intention']];
-  Array.from(keys).sort().forEach(k => M[k].expenses.slice().sort((a, b) => a.ts - b.ts).forEach(e => { const dt = new Date(e.ts); rows.push([e.d, pad(dt.getHours()) + ':' + pad(dt.getMinutes()), e.amount.toFixed(2).replace('.', ','), e.label, e.cat === 'enemy' ? (S.settings.enemy || 'ennemi') : e.cat, e.intent]); }));
+  const rows = [['date','heure','montant','libellé','catégorie','intention','étalement']];
+  Array.from(keys).sort().forEach(k => M[k].expenses.slice().sort((a, b) => a.ts - b.ts).forEach(e => { const dt = new Date(e.ts); rows.push([e.d, pad(dt.getHours()) + ':' + pad(dt.getMinutes()), e.amount.toFixed(2).replace('.', ','), e.label, e.cat === 'enemy' ? (S.settings.enemy || 'ennemi') : e.cat, e.intent, e.g ? (e.part + 1) + '/' + e.parts : '']); }));
   const csv = '﻿' + rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(';')).join('\r\n');
   try {
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' }), url = URL.createObjectURL(blob), a = document.createElement('a');
@@ -825,7 +844,10 @@ async function exportCsv(){
   } catch (e) { toast('Export impossible sur cet appareil.'); }
 }
 async function resetMonth(){
-  const k = monthKey(today()); M[k] = { expenses: [] }; await saveMonth(k);
+  const k = monthKey(today()); await loadMonth(k);
+  const gs = new Set(M[k].expenses.filter(e => e.g).map(e => e.g));
+  if (gs.size) { const p = parse(today()), nk = monthKey(ymd(new Date(p.getFullYear(), p.getMonth() + 1, 1, 12))); await loadMonth(nk); M[nk].expenses = M[nk].expenses.filter(e => !gs.has(e.g)); await saveMonth(nk); }
+  M[k] = { expenses: [] }; await saveMonth(k);
   S.carry = 0; S.boss = null; S.challenge = null; S.impRedeemed[k] = 0; S.lastClosed = addDays(today(), -1); S.streak = 0; S.todayChoice = null;
   Object.keys(S.dayLog).forEach(d => { if (monthKey(d) === k) delete S.dayLog[d]; });
   ui.confirmReset = false; ui.lastShown = null; saveState(true); render(); toast('Mois remis à zéro. Ta cagnotte est intacte.');
@@ -845,6 +867,7 @@ document.addEventListener('click', ev => {
     st.amount = a; render(); return; }
   if (d.intent) { ui.saisie.intent = d.intent; buzz({ besoin:[15], envie:[25,70,25], impulsion:[80,40,80,40,160] }[d.intent]); render(); return; }
   if (d.cat) { ui.saisie.cat = d.cat; render(); return; }
+  if (d.spread) { ui.saisie.spread = +d.spread; render(); return; }
   if (d.seg) { const v = d.val; S.settings[d.seg] = d.seg === 'threshold' ? +v : v; saveState(); render(); return; }
   if (d.sw) { S.settings[d.sw] = !S.settings[d.sw]; saveState(); render(); return; }
   switch (d.act) {
